@@ -73,39 +73,60 @@ final class AppSettings {
     static final class Palette {
         final int background;
         final int surface;
+        final int surfaceElevated;
         final int text;
         final int secondary;
         final int hint;
         final int accent;
+        final int accentAlt;
+        final int border;
+        final int success;
+        final int buttonText;
 
-        private Palette(int background, int surface, int text, int secondary, int hint, int accent) {
+        private Palette(int background, int surface, int surfaceElevated, int text, int secondary,
+                        int hint, int accent, int accentAlt, int border, int success, int buttonText) {
             this.background = background;
             this.surface = surface;
+            this.surfaceElevated = surfaceElevated;
             this.text = text;
             this.secondary = secondary;
             this.hint = hint;
             this.accent = accent;
+            this.accentAlt = accentAlt;
+            this.border = border;
+            this.success = success;
+            this.buttonText = buttonText;
         }
 
         static Palette light() {
             return new Palette(
-                    Color.rgb(247, 247, 251),
+                    Color.rgb(245, 247, 252),
                     Color.WHITE,
-                    Color.rgb(30, 32, 45),
-                    Color.rgb(86, 90, 112),
-                    Color.rgb(120, 124, 145),
-                    Color.rgb(91, 108, 255)
+                    Color.rgb(238, 241, 249),
+                    Color.rgb(22, 25, 38),
+                    Color.rgb(82, 88, 110),
+                    Color.rgb(126, 134, 158),
+                    Color.rgb(91, 108, 255),
+                    Color.rgb(111, 72, 255),
+                    Color.rgb(220, 225, 238),
+                    Color.rgb(19, 170, 108),
+                    Color.WHITE
             );
         }
 
         static Palette dark() {
             return new Palette(
-                    Color.rgb(16, 18, 24),
-                    Color.rgb(31, 34, 43),
-                    Color.rgb(241, 243, 248),
-                    Color.rgb(181, 186, 203),
-                    Color.rgb(139, 145, 165),
-                    Color.rgb(126, 141, 255)
+                    Color.rgb(8, 9, 14),
+                    Color.rgb(25, 27, 36),
+                    Color.rgb(35, 38, 50),
+                    Color.rgb(247, 248, 252),
+                    Color.rgb(200, 206, 222),
+                    Color.rgb(138, 145, 166),
+                    Color.rgb(126, 141, 255),
+                    Color.rgb(179, 121, 255),
+                    Color.rgb(58, 63, 82),
+                    Color.rgb(29, 214, 139),
+                    Color.WHITE
             );
         }
     }

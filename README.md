@@ -5,6 +5,8 @@ Private Android client for the Hermes Agent API Server TTS endpoint.
 ## Features
 
 - English-only UI.
+- Custom Hermes TTS app icon.
+- Modern card-based UI with gradient hero, rounded surfaces, and polished action buttons.
 - Manual text input for text-to-speech.
 - Accepts text from Android Share (`ACTION_SEND`) and selected text menu (`PROCESS_TEXT`).
 - Dedicated Settings screen for API URL, API key, voice, format, speed, and provider behavior.

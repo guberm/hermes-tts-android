@@ -2,6 +2,8 @@ package com.guber.hermestts;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -42,34 +44,44 @@ public class SettingsActivity extends Activity {
         scroll.setBackgroundColor(palette.background);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(18), dp(18), dp(24));
+        root.setPadding(dp(16), dp(16), dp(16), dp(24));
         root.setBackgroundColor(palette.background);
         scroll.addView(root);
 
-        TextView title = text("Settings", 26, palette.text);
-        title.setGravity(Gravity.START);
-        root.addView(title, matchWrap());
+        LinearLayout hero = card(palette.surface, 24, 0);
+        hero.setBackground(gradient(new int[]{palette.surfaceElevated, palette.surface, palette.background}, 24));
+        TextView badge = text("SETTINGS", 12, palette.accent, Typeface.BOLD);
+        badge.setPadding(dp(10), dp(5), dp(10), dp(5));
+        badge.setBackground(rounded(palette.surfaceElevated, 999, palette.border));
+        hero.addView(badge, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        TextView title = text("Voice setup", 31, palette.text, Typeface.BOLD);
+        title.setPadding(0, dp(18), 0, dp(4));
+        hero.addView(title, matchWrap());
+        TextView subtitle = text("Connection, voice, and audio defaults live here. The main screen stays clean for writing and sharing.", 14, palette.secondary, Typeface.NORMAL);
+        subtitle.setLineSpacing(dp(2), 1.0f);
+        hero.addView(subtitle, matchWrap());
+        root.addView(hero, matchWrap());
 
-        TextView subtitle = text("Configure the Hermes API connection and audio defaults.", 14, palette.secondary);
-        subtitle.setPadding(0, dp(4), 0, dp(16));
-        root.addView(subtitle, matchWrap());
-
-        root.addView(label("Hermes API URL"));
+        LinearLayout connectionCard = card(palette.surface, 22, palette.border);
+        connectionCard.addView(sectionTitle("Connection"), matchWrap());
+        connectionCard.addView(label("Hermes API URL"));
         apiUrlEdit = edit("https://host/v1 or https://host/v1/audio/speech", prefs.getString("api_url", ""), false);
-        root.addView(apiUrlEdit, matchWrap());
-
-        root.addView(label("API key"));
+        connectionCard.addView(apiUrlEdit, matchWrap());
+        connectionCard.addView(label("API key"));
         apiKeyEdit = edit("Bearer API key", prefs.getString("api_key", ""), false);
         apiKeyEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        root.addView(apiKeyEdit, matchWrap());
+        connectionCard.addView(apiKeyEdit, matchWrap());
+        root.addView(connectionCard, matchWrapWithTop(14));
 
-        root.addView(label("Voice"));
+        LinearLayout audioCard = card(palette.surface, 22, palette.border);
+        audioCard.addView(sectionTitle("Audio defaults"), matchWrap());
+        audioCard.addView(label("Voice"));
         voiceSpinner = new Spinner(this);
         ArrayAdapter<String> voiceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, AppSettings.voiceLabels());
         voiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         voiceSpinner.setAdapter(voiceAdapter);
         voiceSpinner.setSelection(AppSettings.clamp(prefs.getInt("voice_index", 0), 0, voices.size() - 1));
-        root.addView(voiceSpinner, matchWrap());
+        audioCard.addView(voiceSpinner, matchWrap());
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -95,19 +107,20 @@ public class SettingsActivity extends Activity {
         speedEdit.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
         speedBox.addView(speedEdit, matchWrap());
         row.addView(speedBox, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        root.addView(row, matchWrap());
+        audioCard.addView(row, matchWrap());
 
         sendProviderCheck = new CheckBox(this);
         sendProviderCheck.setText("Send provider with voice");
         sendProviderCheck.setTextColor(palette.text);
         sendProviderCheck.setChecked(prefs.getBoolean("send_provider", true));
-        root.addView(sendProviderCheck, matchWrapWithTop(8));
+        audioCard.addView(sendProviderCheck, matchWrapWithTop(8));
+        root.addView(audioCard, matchWrapWithTop(14));
 
-        Button saveButton = button("Save settings");
+        Button saveButton = primaryButton("Save settings");
         saveButton.setOnClickListener(v -> saveAndClose());
         root.addView(saveButton, matchWrapWithTop(18));
 
-        Button cancelButton = button("Cancel");
+        Button cancelButton = secondaryButton("Cancel");
         cancelButton.setOnClickListener(v -> finish());
         root.addView(cancelButton, matchWrapWithTop(8));
 
@@ -143,32 +156,77 @@ public class SettingsActivity extends Activity {
         edit.setText(value == null ? "" : value);
         edit.setTextSize(15);
         edit.setSingleLine(!multiLine);
-        edit.setPadding(dp(12), dp(8), dp(12), dp(8));
+        edit.setPadding(dp(14), dp(11), dp(14), dp(11));
         edit.setTextColor(palette.text);
         edit.setHintTextColor(palette.hint);
-        edit.setBackgroundColor(palette.surface);
+        edit.setBackground(rounded(palette.surfaceElevated, 16, palette.border));
         return edit;
     }
 
+    private LinearLayout card(int color, int radiusDp, int strokeColor) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setBackground(rounded(color, radiusDp, strokeColor));
+        return card;
+    }
+
+    private TextView sectionTitle(String value) {
+        TextView title = text(value, 17, palette.text, Typeface.BOLD);
+        title.setPadding(0, 0, 0, dp(4));
+        return title;
+    }
+
     private TextView label(String value) {
-        TextView label = text(value, 12, palette.secondary);
-        label.setPadding(0, dp(10), 0, dp(4));
+        TextView label = text(value, 12, palette.secondary, Typeface.BOLD);
+        label.setPadding(dp(2), dp(10), 0, dp(5));
         return label;
     }
 
-    private TextView text(String value, int sp, int color) {
+    private TextView text(String value, int sp, int color, int style) {
         TextView view = new TextView(this);
         view.setText(value);
         view.setTextSize(sp);
         view.setTextColor(color);
+        view.setTypeface(Typeface.DEFAULT, style);
         return view;
+    }
+
+    private Button primaryButton(String value) {
+        Button button = button(value);
+        button.setTextColor(palette.buttonText);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setBackground(gradient(new int[]{palette.accent, palette.accentAlt}, 18));
+        return button;
+    }
+
+    private Button secondaryButton(String value) {
+        Button button = button(value);
+        button.setTextColor(palette.text);
+        button.setBackground(rounded(palette.surfaceElevated, 16, palette.border));
+        return button;
     }
 
     private Button button(String value) {
         Button button = new Button(this);
         button.setText(value);
         button.setAllCaps(false);
+        button.setMinHeight(dp(48));
         return button;
+    }
+
+    private GradientDrawable rounded(int color, int radiusDp, int strokeColor) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        if (strokeColor != 0) drawable.setStroke(dp(1), strokeColor);
+        return drawable;
+    }
+
+    private GradientDrawable gradient(int[] colors, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        drawable.setCornerRadius(dp(radiusDp));
+        return drawable;
     }
 
     private LinearLayout.LayoutParams matchWrap() {
