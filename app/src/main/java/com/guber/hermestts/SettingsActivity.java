@@ -6,7 +6,6 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.Gravity;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -17,25 +16,20 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.List;
 
 public class SettingsActivity extends Activity {
     private SharedPreferences prefs;
     private AppSettings.Palette palette;
     private EditText apiUrlEdit;
     private EditText apiKeyEdit;
-    private EditText speedEdit;
-    private Spinner voiceSpinner;
     private Spinner formatSpinner;
     private CheckBox sendProviderCheck;
-    private List<AppSettings.VoiceOption> voices;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = AppSettings.prefs(this);
         palette = AppSettings.palette(this);
-        voices = AppSettings.voices();
         buildUi();
     }
 
@@ -57,7 +51,7 @@ public class SettingsActivity extends Activity {
         TextView title = text("Voice setup", 31, palette.text, Typeface.BOLD);
         title.setPadding(0, dp(18), 0, dp(4));
         hero.addView(title, matchWrap());
-        TextView subtitle = text("Connection, voice, and audio defaults live here. The main screen stays clean for writing and sharing.", 14, palette.secondary, Typeface.NORMAL);
+        TextView subtitle = text("Connection and audio format defaults live here. Voice and speed are on the main screen.", 14, palette.secondary, Typeface.NORMAL);
         subtitle.setLineSpacing(dp(2), 1.0f);
         hero.addView(subtitle, matchWrap());
         root.addView(hero, matchWrap());
@@ -75,39 +69,13 @@ public class SettingsActivity extends Activity {
 
         LinearLayout audioCard = card(palette.surface, 22, palette.border);
         audioCard.addView(sectionTitle("Audio defaults"), matchWrap());
-        audioCard.addView(label("Voice"));
-        voiceSpinner = new Spinner(this);
-        ArrayAdapter<String> voiceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, AppSettings.voiceLabels());
-        voiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        voiceSpinner.setAdapter(voiceAdapter);
-        voiceSpinner.setSelection(AppSettings.clamp(prefs.getInt("voice_index", 0), 0, voices.size() - 1));
-        audioCard.addView(voiceSpinner, matchWrap());
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(8), 0, 0);
-
-        LinearLayout formatBox = new LinearLayout(this);
-        formatBox.setOrientation(LinearLayout.VERTICAL);
-        formatBox.addView(label("Format"));
+        audioCard.addView(label("Format"));
         formatSpinner = new Spinner(this);
         ArrayAdapter<String> formatAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"mp3", "ogg/opus"});
         formatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         formatSpinner.setAdapter(formatAdapter);
         formatSpinner.setSelection(AppSettings.clamp(prefs.getInt("format_index", 0), 0, 1));
-        formatBox.addView(formatSpinner, matchWrap());
-        row.addView(formatBox, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-
-        LinearLayout speedBox = new LinearLayout(this);
-        speedBox.setOrientation(LinearLayout.VERTICAL);
-        speedBox.setPadding(dp(10), 0, 0, 0);
-        speedBox.addView(label("Speed"));
-        speedEdit = edit("1.0", prefs.getString("speed", "1.0"), false);
-        speedEdit.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        speedBox.addView(speedEdit, matchWrap());
-        row.addView(speedBox, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        audioCard.addView(row, matchWrap());
+        audioCard.addView(formatSpinner, matchWrap());
 
         sendProviderCheck = new CheckBox(this);
         sendProviderCheck.setText("Send provider with voice");
@@ -128,21 +96,9 @@ public class SettingsActivity extends Activity {
     }
 
     private void saveAndClose() {
-        double speed;
-        try {
-            speed = Double.parseDouble(speedEdit.getText().toString().trim());
-            if (speed <= 0.0 || speed > 4.0) throw new NumberFormatException();
-        } catch (Exception e) {
-            Toast.makeText(this, "Speed must be between 0 and 4", Toast.LENGTH_LONG).show();
-            speedEdit.requestFocus();
-            return;
-        }
-
         prefs.edit()
                 .putString("api_url", apiUrlEdit.getText().toString().trim())
                 .putString("api_key", apiKeyEdit.getText().toString().trim())
-                .putString("speed", String.valueOf(speed))
-                .putInt("voice_index", voiceSpinner.getSelectedItemPosition())
                 .putInt("format_index", formatSpinner.getSelectedItemPosition())
                 .putBoolean("send_provider", sendProviderCheck.isChecked())
                 .apply();

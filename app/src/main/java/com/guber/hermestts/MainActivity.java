@@ -1,21 +1,33 @@
 package com.guber.hermestts;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.media.MediaPlayer;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -37,18 +49,42 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
     private AppSettings.Palette palette;
     private EditText textEdit;
+    private EditText speedEdit;
+    private Spinner voiceSpinner;
     private Button generateButton;
     private Button playButton;
     private Button shareButton;
+    private Button playerStopButton;
+    private Button playerPauseButton;
+    private Button playerResumeButton;
+    private LinearLayout playerPanel;
     private ProgressBar progressBar;
     private TextView statusView;
     private TextView settingsSummaryView;
+    private TextView playerTimeView;
     private File lastAudioFile;
-    private MediaPlayer mediaPlayer;
     private List<AppSettings.VoiceOption> voices;
+    private boolean playerReceiverRegistered = false;
+    private boolean ignoreInitialVoiceSelection = false;
+
+    private final BroadcastReceiver playerReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            updatePlayerUi();
+        }
+    };
+
+    private final Runnable playerTicker = new Runnable() {
+        @Override
+        public void run() {
+            updatePlayerUi();
+            uiHandler.postDelayed(this, 500);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,13 +93,25 @@ public class MainActivity extends Activity {
         palette = AppSettings.palette(this);
         voices = AppSettings.voices();
         buildUi();
+        maybeRequestNotificationPermission();
         handleIncomingIntent(getIntent());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        registerPlayerReceiver();
+        uiHandler.post(playerTicker);
         if (settingsSummaryView != null) updateSettingsSummary();
+        updatePlayerUi();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        uiHandler.removeCallbacks(playerTicker);
+        unregisterPlayerReceiver();
+        saveMainAudioPrefs(false);
     }
 
     @Override
@@ -77,10 +125,6 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         executor.shutdownNow();
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-            mediaPlayer = null;
-        }
     }
 
     private void buildUi() {
@@ -120,13 +164,52 @@ public class MainActivity extends Activity {
         settingsSummaryView = text("", 13, palette.secondary, Typeface.NORMAL);
         settingsSummaryView.setPadding(dp(14), dp(12), dp(14), dp(12));
         settingsSummaryView.setBackground(rounded(palette.surface, 18, palette.border));
-        LinearLayout.LayoutParams summaryParams = matchWrapWithTop(14);
-        root.addView(settingsSummaryView, summaryParams);
+        root.addView(settingsSummaryView, matchWrapWithTop(14));
         updateSettingsSummary();
 
+        LinearLayout audioCard = card(palette.surface, 22, palette.border);
+        audioCard.addView(sectionTitle("Voice and speed"), matchWrap());
+        audioCard.addView(label("Voice"));
+        voiceSpinner = new Spinner(this);
+        ArrayAdapter<String> voiceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, AppSettings.voiceLabels());
+        voiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        voiceSpinner.setAdapter(voiceAdapter);
+        ignoreInitialVoiceSelection = true;
+        voiceSpinner.setSelection(AppSettings.clamp(prefs.getInt("voice_index", 0), 0, voices.size() - 1));
+        voiceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (ignoreInitialVoiceSelection) {
+                    ignoreInitialVoiceSelection = false;
+                    return;
+                }
+                prefs.edit().putInt("voice_index", position).apply();
+                updateSettingsSummary();
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        audioCard.addView(voiceSpinner, matchWrap());
+        audioCard.addView(label("Speed"));
+        speedEdit = edit("1.0", prefs.getString("speed", "1.0"), false);
+        speedEdit.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        speedEdit.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) saveMainAudioPrefs(false);
+        });
+        audioCard.addView(speedEdit, matchWrap());
+        root.addView(audioCard, matchWrapWithTop(14));
+
         LinearLayout inputCard = card(palette.surface, 22, palette.border);
+        LinearLayout inputTitleRow = new LinearLayout(this);
+        inputTitleRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputTitleRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView inputTitle = text("Text", 16, palette.text, Typeface.BOLD);
-        inputCard.addView(inputTitle, matchWrap());
+        inputTitleRow.addView(inputTitle, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        Button cleanButton = secondaryButton("Clean");
+        cleanButton.setOnClickListener(v -> clearTextWindow());
+        inputTitleRow.addView(cleanButton, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        inputCard.addView(inputTitleRow, matchWrap());
         TextView inputHint = text("Share text here from any app or type directly below.", 13, palette.secondary, Typeface.NORMAL);
         inputHint.setPadding(0, dp(4), 0, dp(10));
         inputCard.addView(inputHint, matchWrap());
@@ -144,7 +227,7 @@ public class MainActivity extends Activity {
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         playButton = secondaryButton("Play");
         playButton.setEnabled(false);
-        playButton.setOnClickListener(v -> playLastAudio());
+        playButton.setOnClickListener(v -> togglePlayback());
         shareButton = secondaryButton("Share audio");
         shareButton.setEnabled(false);
         shareButton.setOnClickListener(v -> shareLastAudio());
@@ -154,9 +237,34 @@ public class MainActivity extends Activity {
         actionRow.addView(shareButton, shareParams);
         root.addView(actionRow, matchWrapWithTop(10));
 
+        playerPanel = card(palette.surface, 22, palette.border);
+        playerPanel.setVisibility(View.GONE);
+        playerPanel.addView(sectionTitle("Player"), matchWrap());
+        playerTimeView = text("00:00 / 00:00", 18, palette.text, Typeface.BOLD);
+        playerTimeView.setGravity(Gravity.CENTER);
+        playerTimeView.setPadding(0, dp(8), 0, dp(8));
+        playerPanel.addView(playerTimeView, matchWrap());
+        LinearLayout playerControls = new LinearLayout(this);
+        playerControls.setOrientation(LinearLayout.HORIZONTAL);
+        playerStopButton = secondaryButton("Stop");
+        playerStopButton.setOnClickListener(v -> stopPlayback());
+        playerPauseButton = secondaryButton("Pause");
+        playerPauseButton.setOnClickListener(v -> pausePlayback());
+        playerResumeButton = secondaryButton("Play");
+        playerResumeButton.setOnClickListener(v -> resumePlayback());
+        playerControls.addView(playerStopButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams pauseParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        pauseParams.leftMargin = dp(8);
+        playerControls.addView(playerPauseButton, pauseParams);
+        LinearLayout.LayoutParams resumeParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        resumeParams.leftMargin = dp(8);
+        playerControls.addView(playerResumeButton, resumeParams);
+        playerPanel.addView(playerControls, matchWrapWithTop(8));
+        root.addView(playerPanel, matchWrapWithTop(10));
+
         progressBar = new ProgressBar(this);
         progressBar.setIndeterminate(true);
-        progressBar.setVisibility(android.view.View.GONE);
+        progressBar.setVisibility(View.GONE);
         root.addView(progressBar, matchWrapWithTop(12));
 
         statusView = text("Ready", 13, palette.secondary, Typeface.NORMAL);
@@ -164,6 +272,7 @@ public class MainActivity extends Activity {
         root.addView(statusView, matchWrap());
 
         setContentView(scroll);
+        updatePlayerUi();
     }
 
     private void handleIncomingIntent(Intent intent) {
@@ -184,6 +293,7 @@ public class MainActivity extends Activity {
     }
 
     private void generateAudio() {
+        if (!saveMainAudioPrefs(true)) return;
         saveTextOnly();
         String speechUrl = normalizeSpeechUrl(prefs.getString("api_url", ""));
         String apiKey = prefs.getString("api_key", "").trim();
@@ -208,8 +318,8 @@ public class MainActivity extends Activity {
             speed = Double.parseDouble(prefs.getString("speed", "1.0"));
             if (speed <= 0.0 || speed > 4.0) throw new NumberFormatException();
         } catch (Exception e) {
-            toast("Open Settings and set speed between 0 and 4.");
-            startActivity(new Intent(this, SettingsActivity.class));
+            toast("Set speed between 0 and 4.");
+            speedEdit.requestFocus();
             return;
         }
 
@@ -224,12 +334,14 @@ public class MainActivity extends Activity {
                     playButton.setEnabled(true);
                     shareButton.setEnabled(true);
                     setStatus("Saved: " + audio.getName() + " (" + audio.length() + " bytes)");
+                    updatePlayerUi();
                 });
             } catch (Exception ex) {
                 runOnUiThread(() -> {
                     setLoading(false);
                     setStatus("Error: " + ex.getMessage());
                     toast("TTS failed: " + ex.getMessage());
+                    updatePlayerUi();
                 });
             }
         });
@@ -282,23 +394,42 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
-    private void playLastAudio() {
+    private void togglePlayback() {
+        if (PlayerService.isActive()) stopPlayback();
+        else startPlayback();
+    }
+
+    private void startPlayback() {
         if (lastAudioFile == null || !lastAudioFile.exists()) {
             toast("No generated audio yet");
             return;
         }
-        try {
-            if (mediaPlayer != null) mediaPlayer.release();
-            mediaPlayer = new MediaPlayer();
-            mediaPlayer.setDataSource(lastAudioFile.getAbsolutePath());
-            mediaPlayer.setOnCompletionListener(mp -> setStatus("Playback finished."));
-            mediaPlayer.prepare();
-            mediaPlayer.start();
-            setStatus("Playing " + lastAudioFile.getName());
-        } catch (Exception e) {
-            toast("Cannot play: " + e.getMessage());
-            setStatus("Playback error: " + e.getMessage());
-        }
+        Intent intent = new Intent(this, PlayerService.class)
+                .setAction(PlayerService.ACTION_PLAY)
+                .putExtra(PlayerService.EXTRA_PATH, lastAudioFile.getAbsolutePath())
+                .putExtra(PlayerService.EXTRA_TITLE, lastAudioFile.getName());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+        else startService(intent);
+        playerPanel.setVisibility(View.VISIBLE);
+        playButton.setText("Stop");
+        setStatus("Playing " + lastAudioFile.getName());
+        uiHandler.postDelayed(this::updatePlayerUi, 300);
+    }
+
+    private void pausePlayback() {
+        startService(new Intent(this, PlayerService.class).setAction(PlayerService.ACTION_PAUSE));
+        uiHandler.postDelayed(this::updatePlayerUi, 150);
+    }
+
+    private void resumePlayback() {
+        startService(new Intent(this, PlayerService.class).setAction(PlayerService.ACTION_RESUME));
+        uiHandler.postDelayed(this::updatePlayerUi, 150);
+    }
+
+    private void stopPlayback() {
+        startService(new Intent(this, PlayerService.class).setAction(PlayerService.ACTION_STOP));
+        setStatus("Playback stopped.");
+        uiHandler.postDelayed(this::updatePlayerUi, 150);
     }
 
     private void shareLastAudio() {
@@ -326,6 +457,53 @@ public class MainActivity extends Activity {
         settingsSummaryView.setText("Settings  •  " + voices.get(voiceIndex).label + "  •  " + format + "  •  speed " + speed + "  •  API " + api + "  •  key " + key);
     }
 
+    private void updatePlayerUi() {
+        if (playButton == null || playerPanel == null) return;
+        boolean active = PlayerService.isActive();
+        boolean playing = PlayerService.isPlaying();
+        boolean paused = PlayerService.isPaused();
+        playButton.setText(active ? "Stop" : "Play");
+        playButton.setEnabled(!progressBar.isShown() && (active || lastAudioFile != null));
+        shareButton.setEnabled(!progressBar.isShown() && lastAudioFile != null);
+        playerPanel.setVisibility(active ? View.VISIBLE : View.GONE);
+        if (playerPauseButton != null) playerPauseButton.setEnabled(playing);
+        if (playerResumeButton != null) playerResumeButton.setEnabled(paused);
+        if (playerStopButton != null) playerStopButton.setEnabled(active);
+        if (playerTimeView != null) {
+            int pos = PlayerService.positionMs();
+            int dur = PlayerService.durationMs();
+            playerTimeView.setText(formatTime(pos) + " / " + formatTime(dur));
+        }
+        if (active && playing) setStatus("Playing audio...");
+        else if (active && paused) setStatus("Playback paused.");
+    }
+
+    private void clearTextWindow() {
+        textEdit.setText("");
+        saveTextOnly();
+        setStatus("Text cleared.");
+    }
+
+    private boolean saveMainAudioPrefs(boolean showErrors) {
+        double speed;
+        try {
+            speed = Double.parseDouble(speedEdit.getText().toString().trim());
+            if (speed <= 0.0 || speed > 4.0) throw new NumberFormatException();
+        } catch (Exception e) {
+            if (showErrors) {
+                toast("Speed must be between 0 and 4");
+                speedEdit.requestFocus();
+            }
+            return false;
+        }
+        prefs.edit()
+                .putInt("voice_index", voiceSpinner.getSelectedItemPosition())
+                .putString("speed", String.valueOf(speed))
+                .apply();
+        updateSettingsSummary();
+        return true;
+    }
+
     private String normalizeSpeechUrl(String raw) {
         String s = raw == null ? "" : raw.trim();
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
@@ -340,14 +518,46 @@ public class MainActivity extends Activity {
     }
 
     private void setLoading(boolean loading) {
-        progressBar.setVisibility(loading ? android.view.View.VISIBLE : android.view.View.GONE);
+        progressBar.setVisibility(loading ? View.VISIBLE : View.GONE);
         generateButton.setEnabled(!loading);
-        playButton.setEnabled(!loading && lastAudioFile != null);
+        playButton.setEnabled(!loading && (PlayerService.isActive() || lastAudioFile != null));
         shareButton.setEnabled(!loading && lastAudioFile != null);
     }
 
     private void setStatus(String status) {
         statusView.setText(status);
+    }
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private void registerPlayerReceiver() {
+        if (playerReceiverRegistered) return;
+        IntentFilter filter = new IntentFilter(PlayerService.ACTION_STATE_CHANGED);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(playerReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(playerReceiver, filter);
+        playerReceiverRegistered = true;
+    }
+
+    private void maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1007);
+        }
+    }
+
+    private void unregisterPlayerReceiver() {
+        if (!playerReceiverRegistered) return;
+        try {
+            unregisterReceiver(playerReceiver);
+        } catch (Exception ignored) { }
+        playerReceiverRegistered = false;
+    }
+
+    private String formatTime(int ms) {
+        if (ms < 0) ms = 0;
+        int total = ms / 1000;
+        int minutes = total / 60;
+        int seconds = total % 60;
+        return String.format(Locale.US, "%02d:%02d", minutes, seconds);
     }
 
     private EditText edit(String hint, String value, boolean multiLine) {
@@ -372,6 +582,12 @@ public class MainActivity extends Activity {
         card.setPadding(dp(16), dp(16), dp(16), dp(16));
         card.setBackground(rounded(color, radiusDp, strokeColor));
         return card;
+    }
+
+    private TextView sectionTitle(String value) {
+        TextView title = text(value, 17, palette.text, Typeface.BOLD);
+        title.setPadding(0, 0, 0, dp(4));
+        return title;
     }
 
     private GradientDrawable rounded(int color, int radiusDp, int strokeColor) {
