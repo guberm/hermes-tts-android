@@ -12,8 +12,8 @@ Private Android client for the Hermes Agent API Server TTS endpoint.
 - Accepts text from Android Share (`ACTION_SEND`) and selected text menu (`PROCESS_TEXT`).
 - Voice picker and speed control are available directly on the main screen.
 - Dedicated Settings screen for API URL, API key, audio format, and provider behavior.
-- Voice picker with common Hermes TTS provider/voice combinations.
-- MP3 or Opus/Ogg output.
+- Voice picker with common Hermes TTS provider/voice combinations, including local Supertonic.
+- MP3, Opus/Ogg, or WAV output.
 - Local playback with a visible player panel: Stop, Pause, Play, and elapsed/total time.
 - Main **Play** button changes to **Stop** while audio is playing.
 - Foreground media playback service keeps generated audio playing when the app goes to the background.
@@ -31,9 +31,9 @@ Content-Type: application/json
 
 {
   "input": "Text to synthesize",
-  "provider": "edge",
-  "voice": "en-US-GuyNeural",
-  "response_format": "mp3",
+  "provider": "supertonic-local",
+  "voice": "M1",
+  "response_format": "wav",
   "speed": 1.0
 }
 ```
@@ -60,7 +60,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## Release
 
-Current release: `v1.0.3`
+Current release: `v1.0.4`
 
 Release APK naming convention:
 

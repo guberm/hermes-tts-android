@@ -311,7 +311,7 @@ public class MainActivity extends Activity {
 
         int voiceIndex = AppSettings.clamp(prefs.getInt("voice_index", 0), 0, voices.size() - 1);
         AppSettings.VoiceOption voice = voices.get(voiceIndex);
-        String format = prefs.getInt("format_index", 0) == 1 ? "ogg" : "mp3";
+        String format = formatFromPrefs();
         boolean sendProvider = prefs.getBoolean("send_provider", true);
         double speed;
         try {
@@ -356,7 +356,7 @@ public class MainActivity extends Activity {
         conn.setReadTimeout(180_000);
         conn.setRequestProperty("Authorization", "Bearer " + apiKey);
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        conn.setRequestProperty("Accept", format.equals("ogg") ? "audio/ogg, application/json" : "audio/mpeg, application/json");
+        conn.setRequestProperty("Accept", acceptHeaderForFormat(format));
         String body = buildJson(text, voice, format, speed, sendProvider);
         try (OutputStream os = conn.getOutputStream()) {
             os.write(body.getBytes(StandardCharsets.UTF_8));
@@ -369,7 +369,7 @@ public class MainActivity extends Activity {
             if (err.length() > 500) err = err.substring(0, 500);
             throw new Exception("HTTP " + code + ": " + err);
         }
-        String ext = format.equals("ogg") ? "ogg" : "mp3";
+        String ext = extensionForResponse(format, conn.getContentType());
         File dir = new File(getCacheDir(), "generated_audio");
         if (!dir.exists() && !dir.mkdirs()) throw new Exception("Cannot create cache dir");
         String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
@@ -438,7 +438,7 @@ public class MainActivity extends Activity {
             return;
         }
         Uri uri = Uri.parse("content://" + getPackageName() + ".fileprovider/" + Uri.encode(lastAudioFile.getName()));
-        String type = lastAudioFile.getName().endsWith(".ogg") ? "audio/ogg" : "audio/mpeg";
+        String type = mimeForFile(lastAudioFile);
         Intent send = new Intent(Intent.ACTION_SEND);
         send.setType(type);
         send.putExtra(Intent.EXTRA_STREAM, uri);
@@ -450,7 +450,7 @@ public class MainActivity extends Activity {
 
     private void updateSettingsSummary() {
         int voiceIndex = AppSettings.clamp(prefs.getInt("voice_index", 0), 0, voices.size() - 1);
-        String format = prefs.getInt("format_index", 0) == 1 ? "ogg/opus" : "mp3";
+        String format = labelForFormat(formatFromPrefs());
         String api = prefs.getString("api_url", "").trim().isEmpty() ? "not set" : "set";
         String key = prefs.getString("api_key", "").trim().isEmpty() ? "not set" : "set";
         String speed = prefs.getString("speed", "1.0");
@@ -511,6 +511,42 @@ public class MainActivity extends Activity {
         if (s.endsWith("/v1/audio/speech")) return s;
         if (s.endsWith("/v1")) return s + "/audio/speech";
         return s + "/v1/audio/speech";
+    }
+
+    private String formatFromPrefs() {
+        int index = AppSettings.clamp(prefs.getInt("format_index", 0), 0, 2);
+        if (index == 1) return "ogg";
+        if (index == 2) return "wav";
+        return "mp3";
+    }
+
+    private String labelForFormat(String format) {
+        if ("ogg".equals(format)) return "ogg/opus";
+        if ("wav".equals(format)) return "wav";
+        return "mp3";
+    }
+
+    private String acceptHeaderForFormat(String format) {
+        if ("ogg".equals(format)) return "audio/ogg, audio/wav, audio/mpeg, application/json";
+        if ("wav".equals(format)) return "audio/wav, audio/ogg, audio/mpeg, application/json";
+        return "audio/mpeg, audio/wav, audio/ogg, application/json";
+    }
+
+    private String extensionForResponse(String requestedFormat, String contentType) {
+        String ct = contentType == null ? "" : contentType.toLowerCase(Locale.US);
+        if (ct.contains("wav") || ct.contains("wave")) return "wav";
+        if (ct.contains("ogg") || ct.contains("opus")) return "ogg";
+        if (ct.contains("flac")) return "flac";
+        if (ct.contains("mpeg") || ct.contains("mp3")) return "mp3";
+        return requestedFormat;
+    }
+
+    private String mimeForFile(File file) {
+        String name = file.getName().toLowerCase(Locale.US);
+        if (name.endsWith(".ogg")) return "audio/ogg";
+        if (name.endsWith(".wav")) return "audio/wav";
+        if (name.endsWith(".flac")) return "audio/flac";
+        return "audio/mpeg";
     }
 
     private void saveTextOnly() {

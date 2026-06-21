@@ -71,10 +71,10 @@ public class SettingsActivity extends Activity {
         audioCard.addView(sectionTitle("Audio defaults"), matchWrap());
         audioCard.addView(label("Format"));
         formatSpinner = new Spinner(this);
-        ArrayAdapter<String> formatAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"mp3", "ogg/opus"});
+        ArrayAdapter<String> formatAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"mp3", "ogg/opus", "wav"});
         formatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         formatSpinner.setAdapter(formatAdapter);
-        formatSpinner.setSelection(AppSettings.clamp(prefs.getInt("format_index", 0), 0, 1));
+        formatSpinner.setSelection(AppSettings.clamp(prefs.getInt("format_index", 0), 0, 2));
         audioCard.addView(formatSpinner, matchWrap());
 
         sendProviderCheck = new CheckBox(this);

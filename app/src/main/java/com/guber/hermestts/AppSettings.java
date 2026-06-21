@@ -42,6 +42,7 @@ final class AppSettings {
         v.add(new VoiceOption("OpenAI - shimmer", "openai", "shimmer", "gpt-4o-mini-tts"));
         v.add(new VoiceOption("xAI - eve", "xai", "eve", ""));
         v.add(new VoiceOption("Mistral - Paul", "mistral", "c69964a6-ab8b-4f8a-9465-ec0925096ec8", "voxtral-mini-tts-2603"));
+        v.add(new VoiceOption("Supertonic - M1 (local)", "supertonic-local", "M1", ""));
         v.add(new VoiceOption("Hermes default voice", "", "", ""));
         return v;
     }
